@@ -21,7 +21,7 @@ The first step is to download the repository
 ```
 
 
-It is suggested, but not mandatory, to use (conda)[https://www.anaconda.com/] in order to install the
+It is suggested, but not mandatory, to use [conda](https://www.anaconda.com/) in order to install the
 environment we have created with the packages you will need to perform the
 exercises.
 
