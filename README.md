@@ -33,11 +33,11 @@ exercises.
 
 ### Basic
 
-    This folder contains a basic tutorial on image handling, you will
-     find  an example to load, display, select regions of interest and save
-      and image to your computer
+This folder contains a basic tutorial on image handling, you will find an
+example to load, display, select regions of interest and save and image to
+your  computer.
 
 ### Color
 
-    Colorspace Exercise
+Color space Exercise
     
