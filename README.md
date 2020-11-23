@@ -17,7 +17,7 @@ a folder with the input data and some sample code.
 
 The first step is to download the repository
 ```
-     git clone https://github.com/miquelmn/visio_per_computador.git
+     git clone https://github.com/bmalcover/ImageAnalysis2020
 ```
 
 
