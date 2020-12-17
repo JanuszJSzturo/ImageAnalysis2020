@@ -10,7 +10,7 @@ Se recomienda el uso de Python con OpenCV aunque su uso no es obligatorio.
 
 ## Enunciado
 
-Dada la imágenes llamadas input.png y pattern.png que podéis encontrar en la
+Dadas la imágenes llamadas input.png y pattern.png que podéis encontrar en la
  carpeta *input*, queremos saber **cuantas veces** y **en que lugares** aparece
   la figura de la imagen pattern.png en la imagen input.png. A la hora
   de hacer el matching no debemos tener en cuenta el color del fantasma.
