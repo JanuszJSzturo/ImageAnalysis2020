@@ -1,17 +1,17 @@
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt
 import glob
+
 
 def comparator(result, groundTruth):
     """
     Compares the background/foreground of 2 grayscale images as states in
     http://jacarini.dinf.usherbrooke.ca/datasetOverview/
-    but with some simplification, the shadows and unknown are considered as good classification in either case.
+    but with some simplification: the shadows and unknown are considered as good classification in either case.
 
     :param result: model background subtraction output
     :param groundTruth: expected result
-    :return: tp, fp, fn, tn
+    :return: tp(true positive), fp(false positive), fn, tn
     """
     result = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
     groundTruth = cv2.cvtColor(groundTruth, cv2.COLOR_BGR2GRAY)
@@ -28,36 +28,26 @@ def comparator(result, groundTruth):
     bg_groundTruth = (groundTruth == BACKGROUND) | (groundTruth == UNKNOWN) | (groundTruth == SHADOW)
     fg_groundTruth = (groundTruth == FOREGROUND) | (groundTruth == UNKNOWN) | (groundTruth == SHADOW)
 
-    tp = sum(sum(np.bitwise_and(fg_result,fg_groundTruth)))
-    fp = sum(sum(np.bitwise_and(fg_result,np.bitwise_not(fg_groundTruth))))
-    fn = sum(sum(np.bitwise_and(bg_result,np.bitwise_not(bg_groundTruth))))
-    tn = sum(sum(np.bitwise_and(bg_result,bg_groundTruth)))
+    # Model thinks it is foreground and it really is
+    tp = sum(sum(np.bitwise_and(fg_result, fg_groundTruth)))
+
+    # Model thinks it is foreground and it is not
+    fp = sum(sum(np.bitwise_and(fg_result, np.bitwise_not(fg_groundTruth))))
+
+    # Model thinks it is background and it is not
+    fn = sum(sum(np.bitwise_and(bg_result, np.bitwise_not(bg_groundTruth))))
+
+    # Model thinks it is background and it really is
+    tn = sum(sum(np.bitwise_and(bg_result, bg_groundTruth)))
 
     return tp, fp, fn, tn
 
-def im2im(loadPath, savePath):
-    """
-    :param loadPath: 'DATA/baseline/baseline/office/input/*.jpg'
-    :param savePath: 'DATA/baseline/results/office/'
-    :return:
-    """
-    img_array = []
-    for filename in glob.glob(loadPath):
-        img = cv2.imread(filename)
-        height, width, layers = img.shape
-        size = (width, height)
-        img_array.append(img)
 
-    for i in range(len(img_array)):
-        filepath = 'DATA/baseline/results/office/'
-        filename = 'out' + str(i).zfill(6)+'.jpg'
-        cv2.imwrite(filepath + filename, img_array[i])
-
-def loadImages (loadPath):
+def loadImages(loadPath):
     """
-
-    :param loadPath:
-    :return:
+    Load all images in the specified file and returns an array with all of them.
+    :param loadPath: path where the images are located. End of path must be /*.{image extension}, e.g. /*.jpg
+    :return: array with all images in the specified path
     """
     img_array = []
     for filename in glob.glob(loadPath):
@@ -68,42 +58,42 @@ def loadImages (loadPath):
 
     return img_array
 
-def saveImages (savePath):
 
+def exponentialFilter(img_array, alpha, savePath, init_frames, bgFilter='MEAN', morph_opening=True, morph_kernel=(2, 2)):
     """
-    :param savePath:
-    :return:
+    Calculates the backgroudn subtraction using the exponential filter approach.
+    :param img_array: list of frames to do the brackgroudn substraction
+    :param alpha: learning rate [0,1]. Value = 0 means background is not update, value = 1 means the new frame is set as
+    background
+    :param savePath: path where to save the resulting frames
+    :param init_frames: the number of frames to estimate the initial background
+    :param bgFilter: MEAN or MEDIAN to estimate the initial background
+    :param morph_opening: True to apply morphological opening to the resulting background subtraction
+    :param morph_kernel: kernel to be applied with the morphologial openning
+    :return: nothing
     """
-    filepath = 'DATA/baseline/results/office/'
-    filename = 'out' + str(i).zfill(6) + '.jpg'
-    cv2.imwrite(filepath + filename, img_array[i])
-
-
-def exponentialFilter (img_array, alpha, savePath):
-
     # We get the shape of the images
-    im_shape = img_array[0].shape
+    size = img_array[0].shape[0:2]
 
-    # Initialize kernel for morphology transformation
-    kernel = np.ones((2, 2), np.uint8)
+    # Initialize kernel for morphological transformation (opening)
+    if(morph_opening):
+        kernel = np.ones(morph_kernel, np.uint8)
 
-    # Number of initial frames to obtain the starting background
-    init_frames = 20
-
-    # learning rate [0,1]
-    alpha = 0.05
     # Initial background calculation
-    background = np.zeros(shape=im_shape[0:2])
+    background = np.zeros(shape=size)
+    h, w = size
+    temp = np.zeros(shape=(init_frames, h, w))
     for i in range(init_frames):
         frame = img_array[i]
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        background = background + frame
+        temp[i] = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    if (bgFilter == 'MEAN'):
+        background = temp.mean(axis=0).astype(np.uint8)
+    elif (bgFilter == 'MEDIAN'):
+        background = np.median(temp,axis=0).astype(np.uint8)
 
-    background = background / init_frames
-    background = background.astype(np.uint8)
 
     # Algortihm aplication
-    for i in range(init_frames+1,len(img_array)):
+    for i in range(init_frames + 1, len(img_array)):
         # Take the next frame/image
         frame = img_array[i]
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -111,17 +101,26 @@ def exponentialFilter (img_array, alpha, savePath):
         # Substract the background from the frame to get the foreground (out)
         out = np.abs(frame - background)
         ret, out = cv2.threshold(out, 100, 255, cv2.THRESH_BINARY)
-        out = cv2.morphologyEx(out, cv2.MORPH_OPEN, kernel)
+        if(morph_opening):
+            out = cv2.morphologyEx(out, cv2.MORPH_OPEN, kernel)
         # Calculate the new background
-        background = ((1 - alpha)*background + alpha*frame).astype(np.uint8)
+        background = ((1 - alpha) * background + alpha * frame).astype(np.uint8)
 
         # Save the result to the specified path
         filepath = savePath
         filename = 'out' + str(i).zfill(6) + '.jpg'
         cv2.imwrite(filepath + filename, out)
 
-def MOG (img_array, savePath):
 
+def MOG(img_array, savePath):
+    """
+    Calculates the background accorting to MOG algorithm
+    “An improved adaptive background mixture model for real-time tracking with shadow detection” by P. KadewTraKuPong and R. Bowden in 2001
+
+    :param img_array: list of sorted images corresponding to the frames of video
+    :param savePath: path where to save the result
+    :return:
+    """
     fgbg = cv2.bgsegm.createBackgroundSubtractorMOG()
     for i in range(len(img_array)):
         frame = img_array[i]
@@ -132,8 +131,16 @@ def MOG (img_array, savePath):
         filename = 'out' + str(i).zfill(6) + '.jpg'
         cv2.imwrite(filepath + filename, fgmask)
 
-def MOG2 (img_array, savePath):
 
+def MOG2(img_array, savePath):
+    """
+    Calculates the background according to MOG2 algorithm
+    It is based on two papers by Z.Zivkovic, “Improved adaptive Gausian mixture model for background subtraction” in 2004
+    and “Efficient Adaptive Density Estimation per Image Pixel for the Task of Background Subtraction” in 2006
+    :param img_array: list of sorted images corresponding to the frames of video
+    :param savePath: path where to save the result
+    :return:
+    """
     fgbg = cv2.createBackgroundSubtractorMOG2()
     for i in range(len(img_array)):
         frame = img_array[i]
@@ -145,60 +152,41 @@ def MOG2 (img_array, savePath):
         cv2.imwrite(filepath + filename, fgmask)
 
 
+def im2vid(img_path, name):
+    """
+    Creates video from corresponding frames
+    :param img_path: path where the images are located. End of path must be /*.{image extension}, e.g. /*.jpg
+    :param name: name of the video
+    :return:
+    """
+    img_array = []
+    for filename in glob.glob(img_path):
+        img = cv2.imread(filename)
+        height, width, layers = img.shape
+        size = (width, height)
+        img_array.append(img)
+
+    out = cv2.VideoWriter(name, cv2.VideoWriter_fourcc(*'mp4v'), 24, size)  # Save video as mp4 format
+    # out = cv2.VideoWriter(name, cv2.VideoWriter_fourcc(*'DIVX'), 24, size)
+
+    for i in range(len(img_array)):
+        out.write(img_array[i])
+    out.release()
 
 
-loadPath = 'DATA/baseline/baseline/highway/input/*.jpg'
-gtHighwayPath = 'DATA/baseline/baseline/highway/groundtruth/*.png'
-savePath = 'DATA/baseline/results/highway_MOG/'
-images = loadImages(loadPath)
-gt_hihgway_frames = loadImages(gtHighwayPath)
-#exponentialFilter(images,0.05,savePath)
-MOG(images, savePath)
-result_MOG = loadImages('DATA/baseline/results/highway_MOG/*jpg')
+def showVideo(path):
+    """
+    Plays on floating window the corresponding video
+    :param path: path where the video is located.
+    :return:
+    """
+    cap = cv2.VideoCapture(path)
 
-tp =  np.zeros((len(result_MOG)))
-fn =  np.zeros((len(result_MOG)))
-fp =  np.zeros((len(result_MOG)))
-tn =  np.zeros((len(result_MOG)))
-
-for i in range(len(result_MOG)):
-    tp[i],fn[i],fp[i],tn[i] = comparator(result_MOG[i],gt_hihgway_frames[i])
-    print(tp[i],fn[i],fp[i],tn[i])
-
-
-
-
-# im_gt = cv2.imread('DATA/baseline/baseline/highway/groundtruth/gt000684.png')
-# im_gt_gray = cv2.cvtColor(im_gt, cv2.COLOR_BGR2GRAY)
-# im_in = cv2.imread('DATA/baseline/baseline/office/input/in000001')
-#
-# # test_result = np.zeros(shape = (20,20))
-# # plt.imshow(test_result, cmap="gray")
-# # plt.show()
-# #
-# # test_gt = np.zeros(shape = (20,20))
-# # test_gt[0:10,5:10]  = 255
-# # plt.imshow(test_gt, cmap="gray")
-# # plt.show()
-# #
-# # print(comparator(test_result,test_gt))
-# # test_gt[15:17,12:17]  = 50
-# # plt.imshow(test_gt, cmap="gray")
-# # plt.show()
-#
-# test_result = np.zeros(shape = (3,3))
-# test_result[0,1:3]  = 255
-# test_result[1,2]  = 255
-# plt.imshow(test_result, cmap="gray")
-# plt.show()
-#
-# test_gt = np.zeros(shape = (3,3))
-# test_gt[0:2,1:3]  = 255
-# test_gt[1,1]  = 170
-# plt.imshow(test_gt, cmap="gray")
-# plt.show()
-#
-# print(comparator(test_result,test_gt))
-
-
-
+    while (1):
+        ret, frame = cap.read()
+        cv2.imshow('frame', frame)
+        k = cv2.waitKey(30) & 0xff
+        if k == 27:
+            break
+    cap.release()
+    cv2.destroyAllWindows()
