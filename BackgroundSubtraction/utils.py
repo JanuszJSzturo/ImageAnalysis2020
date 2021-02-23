@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import glob
+from tqdm import tqdm
 
 
 def comparator(result, groundTruth):
@@ -11,7 +12,10 @@ def comparator(result, groundTruth):
 
     :param result: model background subtraction output
     :param groundTruth: expected result
-    :return: tp(true positive), fp(false positive), fn, tn
+    :return: tp(true positive),
+            fp(false positive),
+            fn(false negative),
+            tn(true negative)
     """
     result = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
     groundTruth = cv2.cvtColor(groundTruth, cv2.COLOR_BGR2GRAY)
@@ -31,10 +35,10 @@ def comparator(result, groundTruth):
     # Model thinks it is foreground and it really is
     tp = sum(sum(np.bitwise_and(fg_result, fg_groundTruth)))
 
-    # Model thinks it is foreground and it is not
+    # Model thinks it is foreground but it is not
     fp = sum(sum(np.bitwise_and(fg_result, np.bitwise_not(fg_groundTruth))))
 
-    # Model thinks it is background and it is not
+    # Model thinks it is background but it is not
     fn = sum(sum(np.bitwise_and(bg_result, np.bitwise_not(bg_groundTruth))))
 
     # Model thinks it is background and it really is
@@ -50,7 +54,7 @@ def loadImages(loadPath):
     :return: array with all images in the specified path
     """
     img_array = []
-    for filename in glob.glob(loadPath):
+    for filename in tqdm(glob.glob(loadPath),desc='Loading images'):
         img = cv2.imread(filename)
         height, width, layers = img.shape
         size = (width, height)
@@ -86,6 +90,10 @@ def exponentialFilter(img_array, alpha, savePath, init_frames, bgFilter='MEAN', 
     for i in range(init_frames):
         frame = img_array[i]
         temp[i] = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Save the first init_frames in order to have the same amount of output items as input
+        filepath = savePath
+        filename = 'out' + str(i).zfill(6) + '.png'
+        cv2.imwrite(filepath + filename, temp[i])
     if (bgFilter == 'MEAN'):
         background = temp.mean(axis=0).astype(np.uint8)
     elif (bgFilter == 'MEDIAN'):
@@ -93,7 +101,7 @@ def exponentialFilter(img_array, alpha, savePath, init_frames, bgFilter='MEAN', 
 
 
     # Algortihm aplication
-    for i in range(init_frames + 1, len(img_array)):
+    for i in tqdm(range(init_frames, len(img_array)), desc='Algorithm application'):
         # Take the next frame/image
         frame = img_array[i]
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -103,12 +111,13 @@ def exponentialFilter(img_array, alpha, savePath, init_frames, bgFilter='MEAN', 
         ret, out = cv2.threshold(out, 100, 255, cv2.THRESH_BINARY)
         if(morph_opening):
             out = cv2.morphologyEx(out, cv2.MORPH_OPEN, kernel)
+            out = cv2.morphologyEx(out, cv2.MORPH_CLOSE, kernel)
         # Calculate the new background
         background = ((1 - alpha) * background + alpha * frame).astype(np.uint8)
 
         # Save the result to the specified path
         filepath = savePath
-        filename = 'out' + str(i).zfill(6) + '.jpg'
+        filename = 'out' + str(i).zfill(6) + '.png'
         cv2.imwrite(filepath + filename, out)
 
 
@@ -122,13 +131,12 @@ def MOG(img_array, savePath):
     :return:
     """
     fgbg = cv2.bgsegm.createBackgroundSubtractorMOG()
-    for i in range(len(img_array)):
+    for i in tqdm(range(len(img_array)),desc='Algorithm application2'):
         frame = img_array[i]
         fgmask = fgbg.apply(frame)
-
         # Save the result to the specified path
         filepath = savePath
-        filename = 'out' + str(i).zfill(6) + '.jpg'
+        filename = 'out' + str(i).zfill(6) + '.png'
         cv2.imwrite(filepath + filename, fgmask)
 
 
@@ -141,14 +149,14 @@ def MOG2(img_array, savePath):
     :param savePath: path where to save the result
     :return:
     """
-    fgbg = cv2.createBackgroundSubtractorMOG2()
-    for i in range(len(img_array)):
+    fgbg = cv2.createBackgroundSubtractorMOG2(detectShadows=False)
+    for i in tqdm(range(len(img_array)), desc='Algorithm application'):
         frame = img_array[i]
         fgmask = fgbg.apply(frame)
 
         # Save the result to the specified path
         filepath = savePath
-        filename = 'out' + str(i).zfill(6) + '.jpg'
+        filename = 'out' + str(i).zfill(6) + '.png'
         cv2.imwrite(filepath + filename, fgmask)
 
 
@@ -160,7 +168,8 @@ def im2vid(img_path, name):
     :return:
     """
     img_array = []
-    for filename in glob.glob(img_path):
+
+    for filename in tqdm(glob.glob(img_path), desc='Loading images'):
         img = cv2.imread(filename)
         height, width, layers = img.shape
         size = (width, height)
@@ -169,7 +178,7 @@ def im2vid(img_path, name):
     out = cv2.VideoWriter(name, cv2.VideoWriter_fourcc(*'mp4v'), 24, size)  # Save video as mp4 format
     # out = cv2.VideoWriter(name, cv2.VideoWriter_fourcc(*'DIVX'), 24, size)
 
-    for i in range(len(img_array)):
+    for i in tqdm(range(len(img_array)), desc='Converting to video'):
         out.write(img_array[i])
     out.release()
 
@@ -178,15 +187,21 @@ def showVideo(path):
     """
     Plays on floating window the corresponding video
     :param path: path where the video is located.
-    :return:
+    :return: nothing
     """
     cap = cv2.VideoCapture(path)
 
-    while (1):
+    if (cap.isOpened()):
+        # leemos el primer frame
         ret, frame = cap.read()
-        cv2.imshow('frame', frame)
-        k = cv2.waitKey(30) & 0xff
-        if k == 27:
-            break
+
+        # mientras se haya podido leer el siguiente frame
+        while(cap.isOpened() and ret):
+            cv2.imshow('frame', frame)
+            # leer siguiente frame
+            ret, frame = cap.read()
+            k = cv2.waitKey(30) & 0xff
+            if k == 27:
+                break
     cap.release()
     cv2.destroyAllWindows()
